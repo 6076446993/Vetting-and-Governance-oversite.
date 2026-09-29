@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "crucibleCommit": "42112eb0a2a60f6d6964d6f5c3e9eb51b29677ad",
-  "learningWorkerCommit": "148c2f798faab3aba55ddb01294c2b54799c89f4",
+  "learningWorkerCommit": "16e6a9bbe5d06d625d3faa3ea473ac9a67fa188b",
   "oversight": {
     "state": "passed",
     "severity": "none",
@@ -28,7 +28,7 @@
     }
   },
   "manifests": [],
-  "generatedAt": "2026-09-29T12:44:31.277Z",
+  "generatedAt": "2026-09-29T17:51:36.129Z",
   "independent": true,
   "assimilatedRecords": 0,
   "proofStageSatisfied": false
