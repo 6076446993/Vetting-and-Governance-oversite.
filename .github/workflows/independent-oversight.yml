@@ -221,7 +221,12 @@ jobs:
           worker_sha=$(git -C learning-worker rev-parse HEAD)
           vetted_state_sha=$(git -C "$RUNNER_TEMP/vetted-state" rev-parse HEAD)
           node oversight/worker-export.mjs merge --worker-root "$RUNNER_TEMP/custody/worker-root" --vetted-root "$RUNNER_TEMP/custody/source-root" --manifest worker-export/worker-export-manifest.json --worker-sha "$worker_sha" --vetted-state-sha "$vetted_state_sha" --report "$RUNNER_TEMP/custody/encrypted-custody-report.json"
-          # Re-run the independent byte-exact custody verifier after the merge. This is the
+          # Enforce the independent vetting decisions against the unpublished plaintext
+          # staging tree. Quarantined queue entries, exact source bytes, and any candidate
+          # evidence derived from them are removed before the final custody verification.
+          node oversight/encrypted-custody.mjs enforce-vetting --root "$RUNNER_TEMP/custody/source-root" --report "$RUNNER_TEMP/custody/encrypted-custody-report.json"
+          # Re-run the independent byte-exact custody verifier after the merge and quarantine
+          # enforcement. This is the
           # publication boundary: no ciphertext may be created from queue/learning bytes that
           # the refreshed manifest does not commit to.
           node oversight/encrypted-custody.mjs vet --root "$RUNNER_TEMP/custody/source-root" --ciphertext-manifest encrypted-input/encrypted-chunks.json > "$RUNNER_TEMP/custody/post-merge-custody.json"
