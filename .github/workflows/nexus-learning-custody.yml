@@ -1,0 +1,55 @@
+name: Nexus learning custody proof
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/learningDecision.js"
+      - "test/learningDecision.test.js"
+      - ".github/workflows/nexus-learning-custody.yml"
+permissions:
+  contents: read
+jobs:
+  prove-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - name: Prove independent decision contract
+        run: node --test test/learningDecision.test.js
+      - name: Fetch candidate and custody implementations read-only
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: jonathanblunt1214-lgtm/Learning-Worker
+          ref: nexus-vetted-learning-custody
+          path: worker
+          persist-credentials: false
+          ssh-key: ${{ secrets.WORKER_READ_DEPLOY_KEY }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: jonathanblunt1214-lgtm/Crucible-Vetted-Learning-State
+          ref: nexus-vetted-learning-custody
+          path: vetted
+          persist-credentials: false
+          ssh-key: ${{ secrets.VETTED_STATE_READ_KEY }}
+      - name: Prove all three authority contracts together
+        shell: bash
+        run: |
+          node --test worker/test/nexus-candidate-export.test.js
+          node --test vetted/test/vettedState.test.js
+          node - <<'NODE'
+          const {buildCandidateEnvelope,PROJECT_ID}=require('./worker/scripts/nexus-candidate-export');
+          const {decide}=require('./src/learningDecision');
+          const {acceptVerifiedKnowledge}=require('./vetted/src/vettedState');
+          const candidate={id:'cross-repo-proof-1',projectId:PROJECT_ID,kind:'prevention-candidate',claim:'Require workflow lint before a proven workflow precursor proceeds.',claimBoundary:'.github/workflows/',provenance:{failureCode:'CRU-0008',canonicalFailureId:'workflow-failure-class'}};
+          const envelope=buildCandidateEnvelope({candidate,evidenceOutcomeIds:['outcome-a','outcome-b','outcome-c'],sourceCommit:'a'.repeat(40),generatedAt:'2026-09-29T18:00:00.000Z'});
+          const proof={state:'verified',candidateId:candidate.id,experimentBoundary:candidate.claimBoundary,controlledReproduction:true,independentVerification:true};
+          const decision=decide({candidateEnvelope:envelope,proof,decision:'PROMOTE',approvedBy:'cross-repo-proof',reason:'exact-boundary proof gates satisfied',decidedAt:'2026-09-29T18:10:00.000Z'});
+          const knowledge=acceptVerifiedKnowledge({candidateEnvelope:envelope,oversightDecision:decision,proof});
+          if(knowledge.status!=='active'||knowledge.candidateId!==candidate.id) throw new Error('Cross-repository custody proof failed.');
+          console.log(JSON.stringify({candidateId:candidate.id,envelope:envelope.envelopeSha256,decision:decision.decisionSha256,knowledgeId:knowledge.knowledgeId,status:knowledge.status}));
+          NODE
