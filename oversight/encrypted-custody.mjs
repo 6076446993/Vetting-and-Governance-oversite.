@@ -8,6 +8,8 @@ import {classifySource} from './verify.mjs';
 const MAGIC='CRUCIBLE-SOURCE-BUNDLE-V1';const TAG_BYTES=16;const PROJECT='github:jonathanblunt1214-lgtm/The-Crucible';const REPOSITORY='jonathanblunt1214-lgtm/The-Crucible';const REF='refs/heads/development';
 const shaFile=(file)=>{const h=crypto.createHash('sha256'),fd=fs.openSync(file,'r'),b=Buffer.allocUnsafe(1024*1024);try{let n;while((n=fs.readSync(fd,b,0,b.length,null))>0)h.update(b.subarray(0,n));}finally{fs.closeSync(fd);}return h.digest('hex');};
 const digest=(value)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+const canonical=(value)=>Array.isArray(value)?`[${value.map(canonical).join(',')}]`:value&&typeof value==='object'?`{${Object.keys(value).sort().map((key)=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`:JSON.stringify(value);
+const shaValue=(value)=>crypto.createHash('sha256').update(typeof value==='string'?value:canonical(value)).digest('hex');
 const key=()=>{const value=Buffer.from(process.env.CRUCIBLE_SOURCE_BUNDLE_KEY||'','base64');if(value.length!==32)throw new Error('Oversight inbound decryption key is unavailable.');return value;};
 const outboundKey=()=>{const value=Buffer.from(process.env.CRUCIBLE_VETTED_BUNDLE_KEY||'','base64');if(value.length!==32)throw new Error('Oversight outbound encryption key is unavailable.');return value;};
 function validateIdentity(value){if(value.projectId!==PROJECT||value.repository!==REPOSITORY||value.ref!==REF)throw new Error('Encrypted custody identity is outside the governed Crucible development boundary.');}
@@ -19,8 +21,93 @@ export async function decryptBundle(input,output){const fd=fs.openSync(input,'r'
 export function vetRestored(root,ciphertextManifest){const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));validateIdentity(manifest);const queueFile=path.join(root,'source-queue.json');if(shaFile(queueFile)!==manifest.queueSha256)throw new Error('Queue custody hash mismatch.');const queue=JSON.parse(fs.readFileSync(queueFile,'utf8'));if(queue.projectId!==PROJECT)throw new Error('Queue project identity mismatch.');const declared=new Map(manifest.sourceFiles.map((item)=>[item.name,item]));const reviews=[];for(const source of [...queue.documents,...queue.links]){if(!source.durablePath)continue;const relative=source.durablePath.replaceAll('\\','/');if(path.isAbsolute(relative)||!relative.startsWith('sources/'))throw new Error(`Source path escapes custody: ${source.id}`);const file=path.resolve(root,relative);if(!file.startsWith(`${path.resolve(root)}${path.sep}`)||!fs.existsSync(file))throw new Error(`Source content missing: ${source.id}`);const actual=shaFile(file),entry=declared.get(path.basename(file));if(!entry||actual!==entry.sha256||actual!==String(source.contentSha256).toLowerCase())throw new Error(`Source hash mismatch: ${source.id}`);let reason=null;const extension=path.extname(file).toLowerCase();if(['.exe','.dll','.msi','.bat','.cmd','.ps1','.sh','.jar','.com','.scr'].includes(extension))reason='executable source';const location=source.finalUrl||source.url;if(location&&!reason){try{classifySource(location);}catch(error){reason=String(error.message||error);}}const sample=fs.readFileSync(file).subarray(0,2*1024*1024).toString('utf8');const injection=/ignore (?:all |any )?(?:previous|prior|system) instructions|reveal (?:the )?(?:secret|credential|key)|execute (?:this|the following) command/i.test(sample);if(injection)reason='prompt-injection content';reviews.push({sourceId:source.id,contentSha256:actual,decision:reason?'quarantined':'approved-for-bounded-extraction',reason,automaticallyTrusted:false});}
   const approved=reviews.filter((item)=>item.decision==='approved-for-bounded-extraction').length,quarantined=reviews.length-approved;return {schemaVersion:1,projectId:PROJECT,sourceCiphertextSha256:ciphertextManifest.encryptedSha256,vettedCiphertextSha256:null,queueSha256:manifest.queueSha256,learningSha256:manifest.learningSha256,sourceCount:reviews.length,approvedCount:approved,quarantinedCount:quarantined,sourceReviews:reviews,decision:approved?'PASS_TO_LEARNING_WORKER':'QUARANTINE_ALL',scientificProofSatisfied:false,promotionAuthorized:false,independentOversight:true,generatedAt:new Date().toISOString()};}
 
+
+export function enforceVettingDecisions(root,reportFile){
+  const report=JSON.parse(fs.readFileSync(reportFile,'utf8'));
+  if(report?.schemaVersion!==1||report.projectId!==PROJECT||!Array.isArray(report.sourceReviews))throw new Error('Vetting report is invalid.');
+  const quarantined=report.sourceReviews.filter((item)=>item?.decision==='quarantined');
+  const quarantineIds=new Set(quarantined.map((item)=>String(item.sourceId)));
+  const quarantineHashes=new Set(quarantined.map((item)=>String(item.contentSha256).toLowerCase()));
+  if(!quarantined.length){
+    report.enforcedQuarantine={removedSources:0,removedCandidates:0,removedSourceIds:[],removedContentSha256:[]};
+    fs.writeFileSync(reportFile,`${JSON.stringify(report,null,2)}\n`);
+    return report.enforcedQuarantine;
+  }
+
+  const queueFile=path.join(root,'source-queue.json');
+  const manifestFile=path.join(root,'manifest.json');
+  const queue=JSON.parse(fs.readFileSync(queueFile,'utf8'));
+  const manifest=JSON.parse(fs.readFileSync(manifestFile,'utf8'));
+  validateIdentity(manifest);
+  if(queue?.schemaVersion!==1||queue.projectId!==PROJECT||!Array.isArray(queue.documents)||!Array.isArray(queue.links)||!Array.isArray(manifest.sourceFiles))throw new Error('Custody queue or manifest is invalid before quarantine enforcement.');
+
+  const removed=[];
+  const retain=(source)=>{
+    const rejected=quarantineIds.has(String(source.id))||quarantineHashes.has(String(source.contentSha256||'').toLowerCase());
+    if(rejected)removed.push(source);
+    return !rejected;
+  };
+  queue.documents=queue.documents.filter(retain);
+  queue.links=queue.links.filter(retain);
+
+  for(const source of removed){
+    if(!source.durablePath)continue;
+    const relative=String(source.durablePath).replaceAll('\\','/');
+    if(path.isAbsolute(relative)||!relative.startsWith('sources/'))throw new Error(`Quarantined source path escapes custody: ${source.id}`);
+    const file=path.resolve(root,relative);
+    if(!file.startsWith(`${path.resolve(root)}${path.sep}`))throw new Error(`Quarantined source path escapes custody: ${source.id}`);
+    if(fs.existsSync(file)){
+      const actual=shaFile(file);
+      if(source.contentSha256&&actual!==String(source.contentSha256).toLowerCase())throw new Error(`Quarantined source hash changed before removal: ${source.id}`);
+      fs.rmSync(file);
+    }
+  }
+
+  const writeAtomic=(file,value)=>{
+    const temporary=`${file}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary,`${JSON.stringify(value,null,2)}\n`,{flag:'wx',mode:0o600});
+    fs.renameSync(temporary,file);
+  };
+  writeAtomic(queueFile,queue);
+
+  let removedCandidates=0;
+  const learningFiles=fs.readdirSync(root).filter((name)=>name.endsWith('.learning.json'));
+  for(const name of learningFiles){
+    const file=path.join(root,name);
+    const envelope=JSON.parse(fs.readFileSync(file,'utf8'));
+    if(envelope?.schemaVersion!==1||!envelope.payload||!Array.isArray(envelope.payload.candidateRecords))throw new Error('Learning envelope is invalid before quarantine enforcement.');
+    const before=envelope.payload.candidateRecords.length;
+    envelope.payload.candidateRecords=envelope.payload.candidateRecords.filter((record)=>{
+      const provenance=record?.candidate?.provenance;
+      return !quarantineIds.has(String(provenance?.sourceId))&&!quarantineHashes.has(String(provenance?.contentSha256||'').toLowerCase());
+    });
+    removedCandidates+=before-envelope.payload.candidateRecords.length;
+    if(before!==envelope.payload.candidateRecords.length){
+      envelope.payloadSha256=shaValue(envelope.payload);
+      writeAtomic(file,envelope);
+    }
+  }
+
+  manifest.sourceFiles=manifest.sourceFiles.filter((item)=>!quarantineHashes.has(String(item.sha256||'').toLowerCase()));
+  manifest.queueSha256=shaFile(queueFile);
+  if(manifest.learningFile&&fs.existsSync(path.join(root,manifest.learningFile)))manifest.learningSha256=shaFile(path.join(root,manifest.learningFile));
+  manifest.updatedAt=new Date().toISOString();
+  writeAtomic(manifestFile,manifest);
+
+  report.queueSha256=manifest.queueSha256;
+  report.learningSha256=manifest.learningSha256;
+  report.enforcedQuarantine={
+    removedSources:removed.length,
+    removedCandidates,
+    removedSourceIds:removed.map((source)=>String(source.id)).sort(),
+    removedContentSha256:[...quarantineHashes].sort()
+  };
+  writeAtomic(reportFile,report);
+  return report.enforcedQuarantine;
+}
+
 export async function encryptVetted(input,output){const iv=crypto.randomBytes(12),header={magic:MAGIC,schemaVersion:1,algorithm:'aes-256-gcm',stage:'oversight-vetted',projectId:PROJECT,repository:REPOSITORY,ref:REF,iv:iv.toString('base64'),plaintextSha256:shaFile(input),plaintextBytes:fs.statSync(input).size},encoded=Buffer.from(`${JSON.stringify(header)}\n`),cipher=crypto.createCipheriv('aes-256-gcm',outboundKey(),iv);cipher.setAAD(encoded);const fd=fs.openSync(output,'wx',0o600);fs.writeSync(fd,encoded);fs.closeSync(fd);await pipeline(fs.createReadStream(input),cipher,fs.createWriteStream(output,{flags:'a',mode:0o600}));fs.appendFileSync(output,cipher.getAuthTag());return header;}
 export function splitVetted(input,root,maximum=80*1024*1024){fs.mkdirSync(root,{recursive:true});const size=fs.statSync(input).size,fd=fs.openSync(input,'r'),chunks=[];try{for(let offset=0,index=0;offset<size;index++){const length=Math.min(maximum,size-offset),buffer=Buffer.allocUnsafe(length),name=`source-bundle.part-${String(index).padStart(4,'0')}.enc`,file=path.join(root,name);fs.readSync(fd,buffer,0,length,offset);fs.writeFileSync(file,buffer,{flag:'wx',mode:0o600});chunks.push({name,bytes:length,sha256:shaFile(file)});offset+=length;}}finally{fs.closeSync(fd);}const manifest={schemaVersion:1,format:MAGIC,stage:'oversight-vetted',encryptedSha256:shaFile(input),encryptedBytes:size,chunks};fs.writeFileSync(path.join(root,'encrypted-chunks.json'),`${JSON.stringify(manifest,null,2)}\n`,{flag:'wx',mode:0o600});return manifest;}
 
-async function main(){const [command,...args]=process.argv.slice(2),value=(name)=>{const i=args.indexOf(name);if(i<0||!args[i+1])throw new Error(`${name} is required.`);return args[i+1];};if(command==='join')console.log(JSON.stringify(joinChunks(value('--root'),value('--output'))));else if(command==='decrypt')console.log(JSON.stringify(await decryptBundle(value('--input'),value('--output'))));else if(command==='vet')console.log(JSON.stringify(vetRestored(value('--root'),JSON.parse(fs.readFileSync(value('--ciphertext-manifest'),'utf8'))),null,2));else if(command==='encrypt-vetted')console.log(JSON.stringify(await encryptVetted(value('--input'),value('--output'))));else if(command==='split-vetted')console.log(JSON.stringify(splitVetted(value('--input'),value('--root'))));else if(command==='bind-vetted'){const reportFile=value('--report'),manifest=JSON.parse(fs.readFileSync(value('--ciphertext-manifest'),'utf8')),report=JSON.parse(fs.readFileSync(reportFile,'utf8'));report.vettedCiphertextSha256=manifest.encryptedSha256;fs.writeFileSync(reportFile,`${JSON.stringify(report,null,2)}\n`);}else throw new Error('Usage: encrypted-custody.mjs join|decrypt|vet|encrypt-vetted|split-vetted|bind-vetted');}
+async function main(){const [command,...args]=process.argv.slice(2),value=(name)=>{const i=args.indexOf(name);if(i<0||!args[i+1])throw new Error(`${name} is required.`);return args[i+1];};if(command==='join')console.log(JSON.stringify(joinChunks(value('--root'),value('--output'))));else if(command==='decrypt')console.log(JSON.stringify(await decryptBundle(value('--input'),value('--output'))));else if(command==='vet')console.log(JSON.stringify(vetRestored(value('--root'),JSON.parse(fs.readFileSync(value('--ciphertext-manifest'),'utf8'))),null,2));else if(command==='enforce-vetting')console.log(JSON.stringify(enforceVettingDecisions(value('--root'),value('--report')),null,2));else if(command==='encrypt-vetted')console.log(JSON.stringify(await encryptVetted(value('--input'),value('--output'))));else if(command==='split-vetted')console.log(JSON.stringify(splitVetted(value('--input'),value('--root'))));else if(command==='bind-vetted'){const reportFile=value('--report'),manifest=JSON.parse(fs.readFileSync(value('--ciphertext-manifest'),'utf8')),report=JSON.parse(fs.readFileSync(reportFile,'utf8'));report.vettedCiphertextSha256=manifest.encryptedSha256;fs.writeFileSync(reportFile,`${JSON.stringify(report,null,2)}\n`);}else throw new Error('Usage: encrypted-custody.mjs join|decrypt|vet|enforce-vetting|encrypt-vetted|split-vetted|bind-vetted');}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch((error)=>{console.error(error.message);process.exitCode=1;});
