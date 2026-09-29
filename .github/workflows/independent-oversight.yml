@@ -29,13 +29,13 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          repository: jonathanblunt1214-lgtm/The-Crucible
+          repository: 6076446993/The-Crucible
           ref: development
           path: target
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          repository: jonathanblunt1214-lgtm/Learning-Worker
+          repository: 6076446993/Learning-Worker
           path: learning-worker
           persist-credentials: false
           ssh-key: ${{ secrets.WORKER_READ_DEPLOY_KEY }}
@@ -50,7 +50,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/source-state-ssh/key"
           printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$RUNNER_TEMP/source-state-ssh/known_hosts"
           GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/source-state-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/source-state-ssh/known_hosts -o StrictHostKeyChecking=yes" \
-            git clone --depth 1 git@github.com:jonathanblunt1214-lgtm/Crucible-Learning-State.git encrypted-input
+            git clone --depth 1 git@github.com:6076446993/Crucible-Learning-State.git encrypted-input
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
@@ -166,14 +166,14 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          repository: jonathanblunt1214-lgtm/Learning-Worker
+          repository: 6076446993/Learning-Worker
           ref: main
           path: learning-worker
           persist-credentials: false
           ssh-key: ${{ secrets.WORKER_READ_DEPLOY_KEY }}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          repository: jonathanblunt1214-lgtm/Learning-Worker
+          repository: 6076446993/Learning-Worker
           ref: oversight-export
           path: worker-export
           persist-credentials: false
@@ -198,8 +198,8 @@ jobs:
           chmod 600 "$RUNNER_TEMP/source-state-ssh/key" "$RUNNER_TEMP/vetted-state-ssh/key"
           printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$RUNNER_TEMP/source-state-ssh/known_hosts"
           cp "$RUNNER_TEMP/source-state-ssh/known_hosts" "$RUNNER_TEMP/vetted-state-ssh/known_hosts"
-          GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/source-state-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/source-state-ssh/known_hosts -o StrictHostKeyChecking=yes" git clone --depth 1 git@github.com:jonathanblunt1214-lgtm/Crucible-Learning-State.git encrypted-input
-          GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/vetted-state-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/vetted-state-ssh/known_hosts -o StrictHostKeyChecking=yes" git clone --depth 1 git@github.com:jonathanblunt1214-lgtm/Crucible-Vetted-Learning-State.git "$RUNNER_TEMP/vetted-state"
+          GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/source-state-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/source-state-ssh/known_hosts -o StrictHostKeyChecking=yes" git clone --depth 1 git@github.com:6076446993/Crucible-Learning-State.git encrypted-input
+          GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/vetted-state-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/vetted-state-ssh/known_hosts -o StrictHostKeyChecking=yes" git clone --depth 1 git@github.com:6076446993/Crucible-Vetted-Learning-State.git "$RUNNER_TEMP/vetted-state"
       - name: Test candidate handoff and encrypted custody controls
         run: node --test oversight/encrypted-custody.test.mjs oversight/worker-export.test.mjs
       - name: Independently validate, merge, and re-encrypt candidate custody
@@ -279,14 +279,14 @@ jobs:
             --header "Accept: application/vnd.github+json" \
             --header "Authorization: Bearer $CONTROL_TOKEN" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/jonathanblunt1214-lgtm/The-Crucible/actions/permissions \
+            https://api.github.com/repos/6076446993/The-Crucible/actions/permissions \
             --data '{"enabled":false}'
           curl --fail-with-body --silent --show-error \
             --request PUT \
             --header "Accept: application/vnd.github+json" \
             --header "Authorization: Bearer $CONTROL_TOKEN" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/jonathanblunt1214-lgtm/Learning-Worker/actions/permissions \
+            https://api.github.com/repos/6076446993/Learning-Worker/actions/permissions \
             --data '{"enabled":false}'
 
       - name: Email owner immediately
