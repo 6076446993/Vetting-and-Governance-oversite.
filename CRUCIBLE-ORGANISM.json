@@ -5,13 +5,13 @@
   "components": [
     {
       "componentId": "core",
-      "repository": "jonathanblunt1214-lgtm/The-Crucible",
+      "repository": "6076446993/The-Crucible",
       "ref": "development",
       "role": "governed-core"
     },
     {
       "componentId": "learning-worker",
-      "repository": "jonathanblunt1214-lgtm/Learning-Worker",
+      "repository": "6076446993/Learning-Worker",
       "ref": "default",
       "role": "governed-learning-worker"
     }
