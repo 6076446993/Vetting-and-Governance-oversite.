@@ -35,7 +35,7 @@ jobs:
           ref: nexus-vetted-learning-custody
           path: vetted
           persist-credentials: false
-          ssh-key: ${{ secrets.VETTED_STATE_READ_KEY }}
+          ssh-key: ${{ secrets.VETTED_STATE_WRITE_KEY }}
       - name: Prove all three authority contracts together
         shell: bash
         run: |
