@@ -9,7 +9,7 @@ const FORBIDDEN_RUNTIME_PATTERNS = [
   /node:child_process/i,
   /process\.env\.(?:GITHUB_TOKEN|GH_TOKEN)/i,
   /secrets\./i,
-  /https?:\/\/(?!github\.com\/jonathanblunt1214-lgtm\/The-Crucible)/i,
+  /https?:\/\/(?!github\.com\/6076446993\/The-Crucible)/i,
 ];
 
 export function enforce(oversightRoot, targetRoot, workerRoot = null) {
@@ -22,8 +22,8 @@ export function enforce(oversightRoot, targetRoot, workerRoot = null) {
       || /issues:\s*write|actions:\s*write/.test(workflow)) {
     throw new Error('Oversight workflow permissions exceed read-only.');
   }
-  if (!/repository:\s*jonathanblunt1214-lgtm\/The-Crucible/.test(workflow)
-      || !/repository:\s*jonathanblunt1214-lgtm\/Learning-Worker/.test(workflow)
+  if (!/repository:\s*6076446993\/The-Crucible/.test(workflow)
+      || !/repository:\s*6076446993\/Learning-Worker/.test(workflow)
       || (workflow.match(/persist-credentials:\s*false/g) || []).length < 3) {
     throw new Error('Oversight checkout identity or credential isolation failed.');
   }
