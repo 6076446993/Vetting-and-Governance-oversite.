@@ -1,0 +1,24 @@
+name: Oversight firewall regression
+on:
+  push:
+    branches: [repair/oversight-checkout-identity]
+  pull_request:
+    paths:
+      - oversight/**
+      - test/**
+      - .github/workflows/oversight-firewall-regression.yml
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - run: node --test oversight/*.test.mjs test/*.test.js
+      - run: python3 -m unittest oversight.worker_archive_test
