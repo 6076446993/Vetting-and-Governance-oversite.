@@ -31,7 +31,7 @@ test('worker custody is exact-tip and stale-lineage bound before publication', (
   const enforce = workflow.indexOf('encrypted-custody.mjs enforce-vetting');
   const postMergeVerification = workflow.indexOf('post-merge-custody.json');
   const encrypt = workflow.indexOf('encrypted-custody.mjs encrypt-vetted');
-  assert.ok(merge > 0 && enforce > merge && postMergeVerification > enforce && encrypt > postMergeVerification);
+  assert.ok(enforce > 0 && merge > enforce && postMergeVerification > merge && encrypt > postMergeVerification);
 });
 
 test('worker archive compatibility and safety tests run before custody merge', () => {
