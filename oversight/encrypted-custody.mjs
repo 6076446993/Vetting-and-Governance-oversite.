@@ -5,16 +5,41 @@ import {pipeline} from 'node:stream/promises';
 import {fileURLToPath} from 'node:url';
 import {classifySource} from './verify.mjs';
 
-const MAGIC='CRUCIBLE-SOURCE-BUNDLE-V1';const TAG_BYTES=16;const PROJECT='github:jonathanblunt1214-lgtm/The-Crucible';const REPOSITORY='jonathanblunt1214-lgtm/The-Crucible';const REF='refs/heads/development';
+const MAGIC='CRUCIBLE-SOURCE-BUNDLE-V1';const TAG_BYTES=16;const PROJECT='github:jonathanblunt1214-lgtm/The-Crucible';const REPOSITORY='6076446993/The-Crucible';const REF='refs/heads/development';
 const shaFile=(file)=>{const h=crypto.createHash('sha256'),fd=fs.openSync(file,'r'),b=Buffer.allocUnsafe(1024*1024);try{let n;while((n=fs.readSync(fd,b,0,b.length,null))>0)h.update(b.subarray(0,n));}finally{fs.closeSync(fd);}return h.digest('hex');};
 const digest=(value)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const canonical=(value)=>Array.isArray(value)?`[${value.map(canonical).join(',')}]`:value&&typeof value==='object'?`{${Object.keys(value).sort().map((key)=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`:JSON.stringify(value);
 const shaValue=(value)=>crypto.createHash('sha256').update(typeof value==='string'?value:canonical(value)).digest('hex');
 const key=()=>{const value=Buffer.from(process.env.CRUCIBLE_SOURCE_BUNDLE_KEY||'','base64');if(value.length!==32)throw new Error('Oversight inbound decryption key is unavailable.');return value;};
 const outboundKey=()=>{const value=Buffer.from(process.env.CRUCIBLE_VETTED_BUNDLE_KEY||'','base64');if(value.length!==32)throw new Error('Oversight outbound encryption key is unavailable.');return value;};
-function validateIdentity(value){if(value.projectId!==PROJECT||value.repository!==REPOSITORY||value.ref!==REF)throw new Error('Encrypted custody identity is outside the governed Crucible development boundary.');}
+function validateIdentity(value){if(value.projectId!==PROJECT||value.repository!==REPOSITORY||value.ref!==REF){const observed={projectId:String(value?.projectId||'').slice(0,200),repository:String(value?.repository||'').slice(0,200),ref:String(value?.ref||'').slice(0,200)};throw new Error(`Encrypted custody identity is outside the governed Crucible development boundary: ${JSON.stringify(observed)}`);}}
 
-export function joinChunks(root,output){const manifest=JSON.parse(fs.readFileSync(path.join(root,'encrypted-chunks.json'),'utf8'));const fd=fs.openSync(output,'wx',0o600);try{for(const item of manifest.chunks){if(!digest(item.sha256)||!/^source-bundle\.part-\d{4}\.enc$/.test(item.name))throw new Error('Encrypted chunk manifest is invalid.');const file=path.join(root,item.name);if(fs.statSync(file).size!==item.bytes||shaFile(file)!==item.sha256)throw new Error(`Encrypted chunk failed custody: ${item.name}`);fs.writeSync(fd,fs.readFileSync(file));}}finally{fs.closeSync(fd);}if(fs.statSync(output).size!==manifest.encryptedBytes||shaFile(output)!==manifest.encryptedSha256)throw new Error('Joined ciphertext does not match its manifest.');return manifest;}
+const chunkNameKind=(item,index)=>{
+  if(typeof item?.name!=='string')return null;
+  if(item.name===`source-bundle.part-${String(index).padStart(4,'0')}.enc`)return 'positional';
+  const contentAddressed=/^source-bundle-([a-f0-9]{64})\.enc$/.exec(item.name);
+  if(contentAddressed&&contentAddressed[1]===item.sha256)return 'content-addressed';
+  return null;
+};
+export function joinChunks(root,output){
+  const manifest=JSON.parse(fs.readFileSync(path.join(root,'encrypted-chunks.json'),'utf8'));
+  if(manifest?.schemaVersion!==1||manifest.format!==MAGIC||!digest(manifest.encryptedSha256)||!Number.isSafeInteger(manifest.encryptedBytes)||manifest.encryptedBytes<1||!Array.isArray(manifest.chunks)||!manifest.chunks.length)throw new Error('Encrypted chunk manifest is invalid.');
+  const names=new Set();
+  let naming=null;
+  const fd=fs.openSync(output,'wx',0o600);
+  try{
+    for(const [index,item] of manifest.chunks.entries()){
+      const kind=chunkNameKind(item,index);
+      if(!kind||!digest(item.sha256)||!Number.isSafeInteger(item.bytes)||item.bytes<1||names.has(item.name)||(naming&&naming!==kind))throw new Error('Encrypted chunk manifest is invalid.');
+      naming=kind;names.add(item.name);
+      const file=path.join(root,item.name);
+      if(fs.statSync(file).size!==item.bytes||shaFile(file)!==item.sha256)throw new Error(`Encrypted chunk failed custody: ${item.name}`);
+      fs.writeSync(fd,fs.readFileSync(file));
+    }
+  }finally{fs.closeSync(fd);}
+  if(fs.statSync(output).size!==manifest.encryptedBytes||shaFile(output)!==manifest.encryptedSha256)throw new Error('Joined ciphertext does not match its manifest.');
+  return manifest;
+}
 
 export async function decryptBundle(input,output){const fd=fs.openSync(input,'r'),probe=Buffer.alloc(8192),count=fs.readSync(fd,probe,0,probe.length,0);fs.closeSync(fd);const newline=probe.subarray(0,count).indexOf(10);if(newline<0)throw new Error('Encrypted header is missing.');const encoded=probe.subarray(0,newline+1),header=JSON.parse(encoded.toString('utf8'));if(header.magic!==MAGIC||header.algorithm!=='aes-256-gcm')throw new Error('Encrypted format is invalid.');validateIdentity(header);const size=fs.statSync(input).size,tag=Buffer.alloc(TAG_BYTES),tagFd=fs.openSync(input,'r');fs.readSync(tagFd,tag,0,TAG_BYTES,size-TAG_BYTES);fs.closeSync(tagFd);const decipher=crypto.createDecipheriv('aes-256-gcm',key(),Buffer.from(header.iv,'base64'));decipher.setAAD(encoded);decipher.setAuthTag(tag);await pipeline(fs.createReadStream(input,{start:encoded.length,end:size-TAG_BYTES-1}),decipher,fs.createWriteStream(output,{flags:'wx',mode:0o600}));if(fs.statSync(output).size!==header.plaintextBytes||shaFile(output)!==header.plaintextSha256)throw new Error('Authenticated plaintext custody failed.');return header;}
 
@@ -111,3 +136,4 @@ export function splitVetted(input,root,maximum=80*1024*1024){fs.mkdirSync(root,{
 
 async function main(){const [command,...args]=process.argv.slice(2),value=(name)=>{const i=args.indexOf(name);if(i<0||!args[i+1])throw new Error(`${name} is required.`);return args[i+1];};if(command==='join')console.log(JSON.stringify(joinChunks(value('--root'),value('--output'))));else if(command==='decrypt')console.log(JSON.stringify(await decryptBundle(value('--input'),value('--output'))));else if(command==='vet')console.log(JSON.stringify(vetRestored(value('--root'),JSON.parse(fs.readFileSync(value('--ciphertext-manifest'),'utf8'))),null,2));else if(command==='enforce-vetting')console.log(JSON.stringify(enforceVettingDecisions(value('--root'),value('--report')),null,2));else if(command==='encrypt-vetted')console.log(JSON.stringify(await encryptVetted(value('--input'),value('--output'))));else if(command==='split-vetted')console.log(JSON.stringify(splitVetted(value('--input'),value('--root'))));else if(command==='bind-vetted'){const reportFile=value('--report'),manifest=JSON.parse(fs.readFileSync(value('--ciphertext-manifest'),'utf8')),report=JSON.parse(fs.readFileSync(reportFile,'utf8'));report.vettedCiphertextSha256=manifest.encryptedSha256;fs.writeFileSync(reportFile,`${JSON.stringify(report,null,2)}\n`);}else throw new Error('Usage: encrypted-custody.mjs join|decrypt|vet|enforce-vetting|encrypt-vetted|split-vetted|bind-vetted');}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch((error)=>{console.error(error.message);process.exitCode=1;});
+
