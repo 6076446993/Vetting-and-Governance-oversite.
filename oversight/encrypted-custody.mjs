@@ -12,7 +12,7 @@ const canonical=(value)=>Array.isArray(value)?`[${value.map(canonical).join(',')
 const shaValue=(value)=>crypto.createHash('sha256').update(typeof value==='string'?value:canonical(value)).digest('hex');
 const key=()=>{const value=Buffer.from(process.env.CRUCIBLE_SOURCE_BUNDLE_KEY||'','base64');if(value.length!==32)throw new Error('Oversight inbound decryption key is unavailable.');return value;};
 const outboundKey=()=>{const value=Buffer.from(process.env.CRUCIBLE_VETTED_BUNDLE_KEY||'','base64');if(value.length!==32)throw new Error('Oversight outbound encryption key is unavailable.');return value;};
-function validateIdentity(value){if(value.projectId!==PROJECT||value.repository!==REPOSITORY||value.ref!==REF)throw new Error('Encrypted custody identity is outside the governed Crucible development boundary.');}
+function validateIdentity(value){if(value.projectId!==PROJECT||value.repository!==REPOSITORY||value.ref!==REF){const observed={projectId:String(value?.projectId||'').slice(0,200),repository:String(value?.repository||'').slice(0,200),ref:String(value?.ref||'').slice(0,200)};throw new Error(`Encrypted custody identity is outside the governed Crucible development boundary: ${JSON.stringify(observed)}`);}}
 
 const chunkNameKind=(item,index)=>{
   if(typeof item?.name!=='string')return null;
