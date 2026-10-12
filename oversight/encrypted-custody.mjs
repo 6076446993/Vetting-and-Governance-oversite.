@@ -5,7 +5,7 @@ import {pipeline} from 'node:stream/promises';
 import {fileURLToPath} from 'node:url';
 import {classifySource} from './verify.mjs';
 
-const MAGIC='CRUCIBLE-SOURCE-BUNDLE-V1';const TAG_BYTES=16;const PROJECT='github:jonathanblunt1214-lgtm/The-Crucible';const REPOSITORY='jonathanblunt1214-lgtm/The-Crucible';const REF='refs/heads/development';
+const MAGIC='CRUCIBLE-SOURCE-BUNDLE-V1';const TAG_BYTES=16;const PROJECT='github:jonathanblunt1214-lgtm/The-Crucible';const REPOSITORY='6076446993/The-Crucible';const REF='refs/heads/development';
 const shaFile=(file)=>{const h=crypto.createHash('sha256'),fd=fs.openSync(file,'r'),b=Buffer.allocUnsafe(1024*1024);try{let n;while((n=fs.readSync(fd,b,0,b.length,null))>0)h.update(b.subarray(0,n));}finally{fs.closeSync(fd);}return h.digest('hex');};
 const digest=(value)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const canonical=(value)=>Array.isArray(value)?`[${value.map(canonical).join(',')}]`:value&&typeof value==='object'?`{${Object.keys(value).sort().map((key)=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`:JSON.stringify(value);
