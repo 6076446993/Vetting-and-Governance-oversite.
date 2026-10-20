@@ -2,6 +2,13 @@ name: Independent Crucible oversight
 
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Existing oversight or separately reviewed historical authentication
+        type: choice
+        options: [normal, historical-key-authentication]
+        default: normal
+        required: true
   push:
     branches: [main]
     paths-ignore: ["results/**"]
@@ -17,6 +24,7 @@ concurrency:
 
 jobs:
   oversight-regression:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.operation == 'historical-key-authentication') }}
     name: Oversight regression
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -31,6 +39,7 @@ jobs:
           python -m unittest oversight.worker_archive_test
 
   oversight:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.operation == 'historical-key-authentication') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -130,7 +139,7 @@ jobs:
 
   archive-oversight-report:
     needs: oversight
-    if: always() && needs.oversight.outputs.report_b64 != ''
+    if: always() && inputs.operation != 'historical-key-authentication' && needs.oversight.outputs.report_b64 != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: vetted-return
@@ -168,7 +177,7 @@ jobs:
 
   return-vetted-data:
     needs: oversight
-    if: needs.oversight.result == 'success'
+    if: inputs.operation != 'historical-key-authentication' && needs.oversight.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: vetted-return
@@ -277,7 +286,7 @@ jobs:
 
   emergency-stop:
     needs: oversight
-    if: always() && needs.oversight.outputs.critical == 'true'
+    if: always() && inputs.operation != 'historical-key-authentication' && needs.oversight.outputs.critical == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: emergency-control
@@ -336,3 +345,98 @@ jobs:
               client.login(os.environ['SMTP_USER'], os.environ['SMTP_PASSWORD'])
               client.send_message(message)
           PY
+
+
+  historical-key-authentication:
+    # Proposal only: requires independent maintenance review before installation.
+    if: github.repository == '6076446993/Vetting-and-Governance-oversite.' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.operation == 'historical-key-authentication'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - name: Verify independently reviewed diagnostic bytes and exact version pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check <<'PINNED'
+            c87e8bc86a38c1ce7691b52bcd0fa6207e5d6c4fc1590cf9fd98181986a6012c  oversight/historical-key-probe.mjs
+            4cea5daa0884d725e5914a0e74335b00bb0decd59b6e707c253604fdb625410f  oversight/historical-key-batch.mjs
+            048c6656299aa87385ccfbd9990d161ef8b078fec8c28b9931768c56ec647dd5  oversight/raw-history-pins.json
+            9a92d6c47275c0a415f86f83428b1b5dc5e4804555ed914d86f1182c8676f139  oversight/encrypted-custody.mjs
+            1555c607f18ca804f1bda7cee5a88c01242aa455edb8c7401d0b22323280e59d  oversight/verify.mjs
+          PINNED
+          node --test oversight/historical-key-probe.test.mjs oversight/historical-key-probe-race.test.mjs oversight/historical-key-batch.test.mjs
+      - name: Authenticate only the six pinned historical RAW versions without plaintext output
+        env:
+          SOURCE_STATE_READ_KEY: ${{ secrets.SOURCE_STATE_READ_KEY }}
+          CRUCIBLE_SOURCE_BUNDLE_KEY: ${{ secrets.CRUCIBLE_SOURCE_BUNDLE_KEY }}
+          CRUCIBLE_SOURCE_BUNDLE_KEY_PREVIOUS: ${{ secrets.CRUCIBLE_SOURCE_BUNDLE_KEY_PREVIOUS }}
+          CRUCIBLE_RECOVERY_OPERATION: historical-key-authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SOURCE_STATE_READ_KEY"
+          test -n "$RUNNER_TEMP"
+          test ! -e "$RUNNER_TEMP/historical-read-ssh"
+          test ! -e "$RUNNER_TEMP/historical-raw-input"
+          trap 'rm -rf "$RUNNER_TEMP/historical-read-ssh" "$RUNNER_TEMP/historical-raw-input"' EXIT
+          mkdir "$RUNNER_TEMP/historical-read-ssh"
+          printf '%s\n' "$SOURCE_STATE_READ_KEY" > "$RUNNER_TEMP/historical-read-ssh/key"
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$RUNNER_TEMP/historical-read-ssh/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/historical-read-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/historical-read-ssh/known_hosts -o StrictHostKeyChecking=yes"
+          git clone --filter=blob:none --no-checkout --single-branch --branch main git@github.com:6076446993/Crucible-Learning-State.git "$RUNNER_TEMP/historical-raw-input"
+          node oversight/historical-key-batch.mjs
+      - name: Record bounded non-secret authentication evidence in the run summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s historical-key-report.json
+          node --input-type=module <<'EVIDENCE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const bytes=fs.readFileSync('historical-key-report.json');
+          const result=JSON.parse(bytes);
+          const states=new Set(['HELD','AUTHENTICATED_ONLY']);
+          const attempts=new Set(['unavailable','authentication-refused','authenticated']);
+          const hex64=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
+          const slots=new Set(['CRUCIBLE_SOURCE_BUNDLE_KEY','CRUCIBLE_SOURCE_BUNDLE_KEY_PREVIOUS']);
+          if(result.schemaVersion!==1||!states.has(result.state)||!Array.isArray(result.versions)||result.versions.length>6)throw Error('REFUSED_UNBOUNDED_REPORT');
+          const rows=[];
+          for(const v of result.versions){
+            if(!hex64(v.encryptedSha256)||!states.has(v.state)||!Array.isArray(v.attempts)||v.attempts.length>2)throw Error('REFUSED_UNBOUNDED_VERSION');
+            if(!v.attempts.length)rows.push([v.encryptedSha256,v.state,'not-tested','unknown']);
+            for(const a of v.attempts){
+              if(!slots.has(a.slot)||!attempts.has(a.state)||(a.keyFingerprint!==undefined&&!hex64(a.keyFingerprint)))throw Error('REFUSED_UNBOUNDED_ATTEMPT');
+              rows.push([v.encryptedSha256,a.state,a.slot,a.keyFingerprint||'unavailable']);
+            }
+          }
+          const digest=crypto.createHash('sha256').update(bytes).digest('hex');
+          const summary=[
+            '## Independent historical RAW authentication diagnostic',
+            '',
+            '**Authentication-only. No escrow, custody publication, recovery release or independent acceptance.**',
+            '',
+            'State: '+result.state,
+            '',
+            'Report SHA-256: '+digest,
+            '',
+            '| Ciphertext SHA-256 | Result | Existing key slot | Key fingerprint (non-secret) |',
+            '|---|---|---|---|',
+            ...rows.map(r=>'| '+r.join(' | ')+' |'),
+            '',
+            'Failures remain held. The raw report exists only in this ephemeral runner; this summary is not a protected escrow receipt.'
+          ].join('\n')+'\n';
+          if(!process.env.GITHUB_STEP_SUMMARY)throw Error('REFUSED_MISSING_STEP_SUMMARY');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,summary);
+          console.log('HISTORICAL_METADATA_SUMMARY_RECORDED');
+          EVIDENCE

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "custodyRepository": "6076446993/Crucible-Learning-State",
+  "custodyRepositoryId": 1352932373,
+  "head": "e627a695b1898ea7bcc24f884d066bf835868a30",
+  "sourceRun": 39203552123,
+  "pins": [
+    {
+      "commit": "e627a695b1898ea7bcc24f884d066bf835868a30",
+      "manifestPath": "encrypted-chunks.json",
+      "manifestSha256": "3e125f9eab5733e15abb22dc2e8013be3e65415cda922b0d6dc64f6af4f063e0",
+      "encryptedSha256": "738822930f5b86dc90de20e0c1112fedaa6af0b7857b9bc454491190c4539549"
+    },
+    {
+      "commit": "e627a695b1898ea7bcc24f884d066bf835868a30",
+      "manifestPath": "encrypted-manifest-6af9cb479311e0240f4f03298f6d0e32be724d553202176263a16792552ae27f.json",
+      "manifestSha256": "6af9cb479311e0240f4f03298f6d0e32be724d553202176263a16792552ae27f",
+      "encryptedSha256": "11a8bc63005d38a93218b28642ae396425c2bb3916f47e2f5577629ef942b9df"
+    },
+    {
+      "commit": "e627a695b1898ea7bcc24f884d066bf835868a30",
+      "manifestPath": "rebuild-incoming/d2859cfbd9e4411fa5d20a7e568ccebdc2f465bf06748d2a73e6c35ffbca614d/encrypted-chunks.json",
+      "manifestSha256": "7d2a694c595971c629ed9bff28fcca72cc0522cfa1806d54cbff161d3332b9b8",
+      "encryptedSha256": "d2859cfbd9e4411fa5d20a7e568ccebdc2f465bf06748d2a73e6c35ffbca614d"
+    },
+    {
+      "commit": "bfe5dc083cc4bd58f4d7a8855d25dccc106d2b8f",
+      "manifestPath": "encrypted-chunks.json",
+      "manifestSha256": "49e82454f7cb985fd349a9300cd48a2a7784ae802e3848f825d4e6fd9817bd04",
+      "encryptedSha256": "f62ca13bcff98a44cebf041ffe2cd064fa1d7fa0e89203834a7981390ecb28e6"
+    },
+    {
+      "commit": "9ab04e4e0ed6a3496fbfa68ac4e0ddabe5f61933",
+      "manifestPath": "encrypted-chunks.json",
+      "manifestSha256": "103b3e419d748bdce5abe03db21da2c9aaca3a61fb9e57bcf7471ec19a096a26",
+      "encryptedSha256": "822faf3fb828f56c59e74dab60c7709e38d4463523dd42890edee66427b84afc"
+    },
+    {
+      "commit": "c2dfffeea3c343a6993fdc97b8147261177dac15",
+      "manifestPath": "encrypted-chunks.json",
+      "manifestSha256": "99d2fc22bea3914101d984c9b26aecb63fe41a256ec062b8f86de6844aca862b",
+      "encryptedSha256": "c4c98ddc3ba5ff7b3089193767340908c3cf9ff43a342b844d735196a9fb48da"
+    }
+  ]
+}
