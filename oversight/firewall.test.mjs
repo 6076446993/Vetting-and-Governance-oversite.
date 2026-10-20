@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { enforce } from './firewall.mjs';
 
 const ALLOWED = ['encrypted-custody.mjs', 'encrypted-custody.test.mjs', 'firewall.mjs', 'firewall.test.mjs', 'verify.mjs', 'verify.test.mjs', 'worker-export.mjs', 'worker-export.test.mjs', 'workflow.test.mjs', 'historical-key-batch.mjs', 'historical-key-batch.test.mjs', 'historical-key-probe.mjs', 'historical-key-probe.test.mjs', 'historical-key-probe-race.test.mjs'];
