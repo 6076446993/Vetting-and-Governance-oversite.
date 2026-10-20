@@ -367,8 +367,8 @@ jobs:
         run: |
           set -euo pipefail
           sha256sum --check <<'PINNED'
-            c87e8bc86a38c1ce7691b52bcd0fa6207e5d6c4fc1590cf9fd98181986a6012c  oversight/historical-key-probe.mjs
-            4cea5daa0884d725e5914a0e74335b00bb0decd59b6e707c253604fdb625410f  oversight/historical-key-batch.mjs
+            e9dd6e07c9782368a924800a06f6358d77cba7f745a7932e7cbae1dba734490a  oversight/historical-key-probe.mjs
+            6a06611cef645c5e7a188a02cbb6f2bde1c40497d7027840c007645addf79023  oversight/historical-key-batch.mjs
             048c6656299aa87385ccfbd9990d161ef8b078fec8c28b9931768c56ec647dd5  oversight/raw-history-pins.json
             9a92d6c47275c0a415f86f83428b1b5dc5e4804555ed914d86f1182c8676f139  oversight/encrypted-custody.mjs
             1555c607f18ca804f1bda7cee5a88c01242aa455edb8c7401d0b22323280e59d  oversight/verify.mjs
@@ -411,13 +411,18 @@ jobs:
           const hex64=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
           const slots=new Set(['CRUCIBLE_SOURCE_BUNDLE_KEY','CRUCIBLE_SOURCE_BUNDLE_KEY_PREVIOUS']);
           if(result.schemaVersion!==1||!states.has(result.state)||!Array.isArray(result.versions)||result.versions.length>6)throw Error('REFUSED_UNBOUNDED_REPORT');
+          const phases=new Set(['input-open','ciphertext-hash','header-format','header-identity','header-length','key-authentication','post-authentication-integrity','complete','manifest-read','manifest-hash','manifest-schema','chunk-size','chunk-read','chunk-join']);
           const rows=[];
           for(const v of result.versions){
             if(!hex64(v.encryptedSha256)||!states.has(v.state)||!Array.isArray(v.attempts)||v.attempts.length>2)throw Error('REFUSED_UNBOUNDED_VERSION');
-            if(!v.attempts.length)rows.push([v.encryptedSha256,v.state,'not-tested','unknown']);
+            if(!phases.has(v.phase))throw Error('REFUSED_UNKNOWN_PHASE');
+            const matches=v.identityMatches;
+            if(matches&&(Object.keys(matches).sort().join(',')!=='projectId,ref,repository'||Object.values(matches).some(x=>typeof x!=='boolean')))throw Error('REFUSED_IDENTITY_DIAGNOSTIC');
+            const identity=matches?Object.entries(matches).map(([k,value])=>k+':'+(value?'match':'mismatch')).join(', '):'not-reached';
+            if(!v.attempts.length)rows.push([v.encryptedSha256,v.state,'not-tested',v.phase,identity]);
             for(const a of v.attempts){
               if(!slots.has(a.slot)||!attempts.has(a.state)||(a.keyFingerprint!==undefined&&!hex64(a.keyFingerprint)))throw Error('REFUSED_UNBOUNDED_ATTEMPT');
-              rows.push([v.encryptedSha256,a.state,a.slot,a.keyFingerprint||'unavailable']);
+              rows.push([v.encryptedSha256,a.state,a.slot,v.phase,identity]);
             }
           }
           const digest=crypto.createHash('sha256').update(bytes).digest('hex');
@@ -430,8 +435,8 @@ jobs:
             '',
             'Report SHA-256: '+digest,
             '',
-            '| Ciphertext SHA-256 | Result | Existing key slot | Key fingerprint (non-secret) |',
-            '|---|---|---|---|',
+            '| Ciphertext SHA-256 | Result | Existing key slot | Diagnostic phase | Identity comparisons (no header values) |',
+            '|---|---|---|---|---|',
             ...rows.map(r=>'| '+r.join(' | ')+' |'),
             '',
             'Failures remain held. The raw report exists only in this ephemeral runner; this summary is not a protected escrow receipt.'

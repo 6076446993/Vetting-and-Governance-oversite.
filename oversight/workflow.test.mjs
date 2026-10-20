@@ -2,10 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import {spawnSync} from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'independent-oversight.yml'), 'utf8');
+
+function runHistoricalSummary(t,version){
+  const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'historical-summary-'));
+  t.after(()=>fs.rmSync(temporary,{recursive:true,force:true}));
+  const match=workflow.match(/node --input-type=module <<'EVIDENCE'\n([\s\S]*?)\n          EVIDENCE/);
+  assert.ok(match);
+  fs.writeFileSync(path.join(temporary,'historical-key-report.json'),JSON.stringify({schemaVersion:1,state:'HELD',versions:[version]}));
+  const summary=path.join(temporary,'summary.md');
+  const result=spawnSync(process.execPath,['--input-type=module'],{input:match[1].replace(/^          /gm,''),cwd:temporary,encoding:'utf8',env:{...process.env,GITHUB_STEP_SUMMARY:summary}});
+  return {result,text:fs.existsSync(summary)?fs.readFileSync(summary,'utf8'):''};
+}
+test('actual historical summary preserves pre-key phase and boolean identity evidence',t=>{
+  const {result,text}=runHistoricalSummary(t,{encryptedSha256:'a'.repeat(64),state:'HELD',attempts:[],phase:'header-identity',identityMatches:{projectId:true,repository:false,ref:true}});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(text,/not-tested.*header-identity.*repository:mismatch/);
+});
+test('actual historical summary rejects unbounded phase text before publication',t=>{
+  const {result,text}=runHistoricalSummary(t,{encryptedSha256:'a'.repeat(64),state:'HELD',attempts:[],phase:'untrusted-source-content'});
+  assert.notEqual(result.status,0);assert.equal(text,'');
+});
 
 test('custody publication does not depend on Actions artifact quota', () => {
   assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact/);

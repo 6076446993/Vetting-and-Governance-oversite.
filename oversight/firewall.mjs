@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ALLOWED_MODULES = new Set(['encrypted-custody.mjs', 'encrypted-custody.test.mjs', 'firewall.mjs', 'firewall.test.mjs', 'verify.mjs', 'verify.test.mjs', 'worker-export.mjs', 'worker-export.test.mjs', 'workflow.test.mjs', 'historical-key-batch.mjs', 'historical-key-batch.test.mjs', 'historical-key-probe.mjs', 'historical-key-probe.test.mjs', 'historical-key-probe-race.test.mjs']);
-const PINNED_HISTORICAL_BATCH_SHA256 = '4cea5daa0884d725e5914a0e74335b00bb0decd59b6e707c253604fdb625410f';
+const PINNED_HISTORICAL_BATCH_SHA256 = '6a06611cef645c5e7a188a02cbb6f2bde1c40497d7027840c007645addf79023';
 const APPROVED_GIT_SUBPROCESS_IMPORT = /node:child_process/i;
 const FORBIDDEN_RUNTIME_PATTERNS = [
   /from\s+['"](?:\.\.\/)*target/i,

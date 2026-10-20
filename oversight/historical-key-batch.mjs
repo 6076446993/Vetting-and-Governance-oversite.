@@ -24,10 +24,11 @@ export function runBatch({stateRoot,pins,expectedHead,env=process.env}){
   if(git(stateRoot,['rev-parse','HEAD']).trim()!==expectedHead||git(stateRoot,['rev-parse','--is-shallow-repository']).trim()!=='false')refused();
   temp=fs.mkdtempSync(path.join(os.tmpdir(),'oversight-pinned-history-'));fs.chmodSync(temp,0o700);
   for(const [index,p] of pins.entries()){
-   const entry={...p,state:'HELD',attempts:[]};report.versions.push(entry);
+   const entry={...p,state:'HELD',attempts:[],phase:'manifest-read'};report.versions.push(entry);
    const stage=path.join(temp,String(index));fs.mkdirSync(stage,{mode:0o700});
    try{
-    const bytes=git(stateRoot,['show',`${p.commit}:${p.manifestPath}`]);if(sha(bytes)!==p.manifestSha256)refused();
+    const bytes=git(stateRoot,['show',`${p.commit}:${p.manifestPath}`]);entry.phase='manifest-hash';if(sha(bytes)!==p.manifestSha256)refused();
+    entry.phase='manifest-schema';
     const m=JSON.parse(bytes);
     if(m.encryptedSha256!==p.encryptedSha256||!Number.isSafeInteger(m.encryptedBytes)||m.encryptedBytes<1||m.encryptedBytes>1024**3||!Array.isArray(m.chunks)||!m.chunks.length||m.chunks.length>32)refused();
     fs.writeFileSync(path.join(stage,'encrypted-chunks.json'),bytes,{flag:'wx',mode:0o600});
@@ -37,13 +38,18 @@ export function runBatch({stateRoot,pins,expectedHead,env=process.env}){
      // exact ordering, naming scheme, per-chunk hashes and aggregate hash.
      if(typeof c.name!=='string'||!/^source-bundle(?:\.part-\d{4}|-[a-f0-9]{64})\.enc$/.test(c.name)||!Number.isSafeInteger(c.bytes)||c.bytes<1||c.bytes>96*1024**2)refused();
      const member=dir==='.'?c.name:`${dir}/${c.name}`;
+     entry.phase='chunk-size';
      if(git(stateRoot,['cat-file','-s',`${p.commit}:${member}`]).trim()!==String(c.bytes))refused();
+     entry.phase='chunk-read';
      const fd=fs.openSync(path.join(stage,c.name),'wx',0o600);
      try{git(stateRoot,['show',`${p.commit}:${member}`],{stdio:['ignore',fd,'pipe']});}finally{fs.closeSync(fd);}
     }
+    entry.phase='chunk-join';
     const input=path.join(stage,'pinned.enc');joinChunks(stage,input);
     const result=probe({input,expectedSha256:p.encryptedSha256,env});
-    entry.state=result.state;entry.attempts=result.attempts;
+    entry.state=result.state;entry.attempts=result.attempts;entry.phase=result.phase;
+    if(result.reason)entry.reason=result.reason;
+    if(result.identityMatches)entry.identityMatches=result.identityMatches;
    }catch{entry.reason='PINNED_INPUT_OR_AUTHENTICATION_REFUSED';}
    finally{fs.rmSync(stage,{recursive:true,force:true});}
   }
