@@ -395,11 +395,48 @@ jobs:
           export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/historical-read-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/historical-read-ssh/known_hosts -o StrictHostKeyChecking=yes"
           git clone --filter=blob:none --no-checkout --single-branch --branch main git@github.com:6076446993/Crucible-Learning-State.git "$RUNNER_TEMP/historical-raw-input"
           node oversight/historical-key-batch.mjs
-      - name: Retain only bounded authentication metadata including refusals
+      - name: Record bounded non-secret authentication evidence in the run summary
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: historical-key-authentication-${{ github.run_id }}-${{ github.run_attempt }}
-          path: historical-key-report.json
-          if-no-files-found: error
-          retention-days: 90
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s historical-key-report.json
+          node --input-type=module <<'EVIDENCE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const bytes=fs.readFileSync('historical-key-report.json');
+          const result=JSON.parse(bytes);
+          const states=new Set(['HELD','AUTHENTICATED_ONLY']);
+          const attempts=new Set(['unavailable','authentication-refused','authenticated']);
+          const hex64=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
+          const slots=new Set(['CRUCIBLE_SOURCE_BUNDLE_KEY','CRUCIBLE_SOURCE_BUNDLE_KEY_PREVIOUS']);
+          if(result.schemaVersion!==1||!states.has(result.state)||!Array.isArray(result.versions)||result.versions.length>6)throw Error('REFUSED_UNBOUNDED_REPORT');
+          const rows=[];
+          for(const v of result.versions){
+            if(!hex64(v.encryptedSha256)||!states.has(v.state)||!Array.isArray(v.attempts)||v.attempts.length>2)throw Error('REFUSED_UNBOUNDED_VERSION');
+            if(!v.attempts.length)rows.push([v.encryptedSha256,v.state,'not-tested','unknown']);
+            for(const a of v.attempts){
+              if(!slots.has(a.slot)||!attempts.has(a.state)||(a.keyFingerprint!==undefined&&!hex64(a.keyFingerprint)))throw Error('REFUSED_UNBOUNDED_ATTEMPT');
+              rows.push([v.encryptedSha256,a.state,a.slot,a.keyFingerprint||'unavailable']);
+            }
+          }
+          const digest=crypto.createHash('sha256').update(bytes).digest('hex');
+          const summary=[
+            '## Independent historical RAW authentication diagnostic',
+            '',
+            '**Authentication-only. No escrow, custody publication, recovery release or independent acceptance.**',
+            '',
+            'State: '+result.state,
+            '',
+            'Report SHA-256: '+digest,
+            '',
+            '| Ciphertext SHA-256 | Result | Existing key slot | Key fingerprint (non-secret) |',
+            '|---|---|---|---|',
+            ...rows.map(r=>'| '+r.join(' | ')+' |'),
+            '',
+            'Failures remain held. The raw report exists only in this ephemeral runner; this summary is not a protected escrow receipt.'
+          ].join('\n')+'\n';
+          if(!process.env.GITHUB_STEP_SUMMARY)throw Error('REFUSED_MISSING_STEP_SUMMARY');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,summary);
+          console.log('HISTORICAL_METADATA_SUMMARY_RECORDED');
+          EVIDENCE
