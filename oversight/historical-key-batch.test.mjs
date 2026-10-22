@@ -38,6 +38,9 @@ test('one altered authenticated tag retains partial results and refuses batch su
 });
 test('unknown historical identity stays held without widening the probe boundary',t=>{
  const f=fixture(t,{foreign:true}),r=runBatch({stateRoot:f.root,...f});assert.equal(r.state,'HELD');assert.equal(r.versions[1].state,'HELD');
+ assert.equal(r.versions[1].phase,'header-identity');
+ assert.deepEqual(r.versions[1].identityMatches,{projectId:true,repository:false,ref:true});
+ assert.equal(r.versions[1].reason,'INPUT_OR_AUTHENTICATION_REFUSED');
 });
 test('wrong manifest hash refuses before reading a candidate secret',t=>{
  const f=fixture(t);f.pins=[{...f.pins[0],manifestSha256:'0'.repeat(64)}];let reads=0;

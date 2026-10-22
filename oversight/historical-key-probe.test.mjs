@@ -17,6 +17,16 @@ function fixture(t,changes={}){
 test('retained key authenticates without creating plaintext or authorizing recovery',t=>{const f=fixture(t),r=probe(f);assert.equal(r.state,'AUTHENTICATED_ONLY');assert.equal(r.restartAuthorized,false);assert.equal(r.populationVerified,false);assert.deepEqual(fs.readdirSync(f.root),['input.enc']);assert.ok(!JSON.stringify(r).includes(f.env.CRUCIBLE_SOURCE_BUNDLE_KEY));assert.ok(!JSON.stringify(r).includes(f.plain.toString()));});
 test('old key in previous slot works when current does not',t=>{const f=fixture(t);f.env.CRUCIBLE_SOURCE_BUNDLE_KEY_PREVIOUS=f.env.CRUCIBLE_SOURCE_BUNDLE_KEY;f.env.CRUCIBLE_SOURCE_BUNDLE_KEY=crypto.randomBytes(32).toString('base64');const r=probe(f);assert.deepEqual(r.attempts.map(a=>a.state),['authentication-refused','authenticated']);});
 test('wrong key stays held',t=>{const f=fixture(t);f.env.CRUCIBLE_SOURCE_BUNDLE_KEY=crypto.randomBytes(32).toString('base64');assert.equal(probe(f).state,'HELD');});
+test('pre-authentication identity refusal identifies the exact failed identity fields without disclosing values',t=>{
+ const f=fixture(t,{repository:'private-untrusted-value'}),r=probe(f);
+ assert.equal(r.phase,'header-identity');
+ assert.deepEqual(r.identityMatches,{projectId:true,repository:false,ref:true});
+ assert.deepEqual(r.attempts,[]);
+ assert.ok(!JSON.stringify(r).includes('private-untrusted-value'));
+});
+test('pinned ciphertext mismatch has a distinct pre-key phase',t=>{
+ const f=fixture(t);f.expectedSha256='0'.repeat(64);assert.equal(probe(f).phase,'ciphertext-hash');
+});
 test('hash mismatch is refused before key attempts',t=>{const f=fixture(t);f.expectedSha256='0'.repeat(64);assert.deepEqual(probe(f).attempts,[]);});
 test('tampered ciphertext with updated external hash still fails AEAD',t=>{const f=fixture(t);f.bytes[f.bytes.length-18]^=1;fs.writeFileSync(f.input,f.bytes);f.expectedSha256=sha(f.bytes);assert.equal(probe(f).state,'HELD');});
 for(const [name,changes] of Object.entries({wrongRepository:{repository:'other/repo'},wrongRef:{ref:'refs/heads/main'},wrongProject:{projectId:'other'},wrongLength:{plaintextBytes:1},wrongDigest:{plaintextSha256:'0'.repeat(64)},invalidIv:{iv:'invalid'}}))test(name+' is refused',t=>assert.equal(probe(fixture(t,changes)).state,'HELD'));
