@@ -367,11 +367,11 @@ jobs:
         run: |
           set -euo pipefail
           sha256sum --check <<'PINNED'
-            e9dd6e07c9782368a924800a06f6358d77cba7f745a7932e7cbae1dba734490a  oversight/historical-key-probe.mjs
-            6a06611cef645c5e7a188a02cbb6f2bde1c40497d7027840c007645addf79023  oversight/historical-key-batch.mjs
-            048c6656299aa87385ccfbd9990d161ef8b078fec8c28b9931768c56ec647dd5  oversight/raw-history-pins.json
-            9a92d6c47275c0a415f86f83428b1b5dc5e4804555ed914d86f1182c8676f139  oversight/encrypted-custody.mjs
-            1555c607f18ca804f1bda7cee5a88c01242aa455edb8c7401d0b22323280e59d  oversight/verify.mjs
+          e9dd6e07c9782368a924800a06f6358d77cba7f745a7932e7cbae1dba734490a  oversight/historical-key-probe.mjs
+          6a06611cef645c5e7a188a02cbb6f2bde1c40497d7027840c007645addf79023  oversight/historical-key-batch.mjs
+          048c6656299aa87385ccfbd9990d161ef8b078fec8c28b9931768c56ec647dd5  oversight/raw-history-pins.json
+          9a92d6c47275c0a415f86f83428b1b5dc5e4804555ed914d86f1182c8676f139  oversight/encrypted-custody.mjs
+          1555c607f18ca804f1bda7cee5a88c01242aa455edb8c7401d0b22323280e59d  oversight/verify.mjs
           PINNED
           node --test oversight/historical-key-probe.test.mjs oversight/historical-key-probe-race.test.mjs oversight/historical-key-batch.test.mjs
       - name: Authenticate only the six pinned historical RAW versions without plaintext output
