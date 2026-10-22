@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -61,4 +62,20 @@ test('worker archive compatibility and safety tests run before custody merge', (
   assert.ok(workflow.indexOf('python -m unittest oversight.worker_archive_test') < workflow.indexOf('python oversight/worker_archive.py'));
   assert.match(workflow, /Erase temporary plaintext custody[\s\S]*?if:\s*always\(\)[\s\S]*?rm -rf[^\r\n]+RUNNER_TEMP\/custody/);
   assert.ok(workflow.indexOf('Sign and publish only the independently approved ciphertext') < workflow.indexOf('Erase temporary plaintext custody'));
+});
+
+test('historical preflight supplies five canonical checksum records matching actual diagnostic bytes', () => {
+  const block = workflow.match(/sha256sum --check <<'PINNED'\n([\s\S]*?)\n {10}PINNED/);
+  assert.ok(block, 'required checksum guard must exist');
+  const rows = block[1].split('\n').map(line => line.slice(10));
+  assert.equal(rows.length, 5);
+  const paths = [];
+  for (const row of rows) {
+    const record = row.match(/^([a-f0-9]{64})  (oversight\/[a-z0-9.-]+)$/);
+    assert.ok(record, 'checksum records must start with the digest after YAML indentation is removed');
+    paths.push(record[2]);
+    const bytes = fs.readFileSync(path.join(root, record[2]));
+    assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), record[1], record[2]);
+  }
+  assert.deepEqual(paths.sort(), ['oversight/encrypted-custody.mjs', 'oversight/historical-key-batch.mjs', 'oversight/historical-key-probe.mjs', 'oversight/raw-history-pins.json', 'oversight/verify.mjs'].sort());
 });

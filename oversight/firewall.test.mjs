@@ -83,3 +83,16 @@ test('firewall continues to reject subprocess access from other diagnostic modul
     assert.throws(() => enforce(root, target), /capability/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test('actual repository tree satisfies the production separation firewall', t => {
+  const actualRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'oversight-actual-tree-'));
+  t.after(() => fs.rmSync(temporary, { recursive: true, force: true }));
+  const target = path.join(temporary, 'target');
+  fs.mkdirSync(path.join(target, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(target, 'src', 'scientificLearning.js'), '');
+  const result = enforce(actualRoot, target);
+  assert.equal(result.state, 'isolated');
+  assert.equal(result.targetMutationAuthorized, false);
+});
